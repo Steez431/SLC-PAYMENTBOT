@@ -9,17 +9,31 @@ SLC Trench Scanner helper (compact, single-file)
 - Daily midnight sweep: expire users after 30 days unless re-paid
 - Whitelist prevents kicking
 - /myjoin returns join and expiry
+- Uses env var SLC_DATA_FILE (e.g., /data/slc_users.json) for persistent storage
 """
 import requests, time, json, os, threading
 from datetime import datetime, timedelta
 
-# -------- CONFIG - fill these --------
+# -------- CONFIG --------
 WALLET = "GFxQeqQBhgu4yLYLf7BFUBkRkhbfTnkAfwsrN9TEaTZv"
-TELEGRAM_BOT_TOKEN = ""
-SLC_CHAT_ID = ""   # e.g. -1001234567890
-# -------------------------------------
 
-DATA_FILE = "slc_users.json"
+# Prefer environment variables; fall back to literals if you want to hardcode.
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "") or ""
+SLC_CHAT_ID = os.getenv("SLC_CHAT_ID", "") or ""   # e.g. -1001234567890
+
+# Persistent data path (recommended: set SLC_DATA_FILE=/data/slc_users.json on Render)
+DATA_FILE = os.environ.get("SLC_DATA_FILE", "slc_users.json")
+os.makedirs(os.path.dirname(DATA_FILE) or ".", exist_ok=True)
+# One-time migration if an old local file exists and disk is empty:
+legacy = "slc_users.json"
+if DATA_FILE != legacy and os.path.exists(legacy) and not os.path.exists(DATA_FILE):
+    try:
+        with open(legacy, "rb") as src, open(DATA_FILE, "wb") as dst:
+            dst.write(src.read())
+    except Exception as e:
+        print("Migration warning:", e)
+# ------------------------
+
 SOLSCAN_BASE = "https://public-api.solscan.io"
 TELE_BASE = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 MIN_LAMPORTS = int(0.15 * 1_000_000_000)
@@ -32,7 +46,7 @@ def load_data():
         return json.load(open(DATA_FILE))
     return {"users": {}, "wallet_map": {}, "seen_tx": []}
 
-def save_data(d): 
+def save_data(d):
     json.dump(d, open(DATA_FILE, "w"), indent=2)
 
 def send_message(chat_id, text):
@@ -227,3 +241,4 @@ if __name__ == "__main__":
         solscan_loop()
     except KeyboardInterrupt:
         print("Stopping...")
+
